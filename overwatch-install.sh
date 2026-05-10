@@ -112,8 +112,15 @@ prepare_source() {
         git -C "$INSTALL_DIR" checkout "$REPO_BRANCH"    >> "$LOG_FILE" 2>&1
         git -C "$INSTALL_DIR" pull origin "$REPO_BRANCH" >> "$LOG_FILE" 2>&1
     else
-        log "Cloning repository (branch: $REPO_BRANCH)..."
-        git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" >> "$LOG_FILE" 2>&1
+        log "Cloning repository (branch: $REPO_BRANCH) — this may take several minutes..."
+        local attempt=1
+        until git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_DIR" >> "$LOG_FILE" 2>&1; do
+            [ "$attempt" -ge 4 ] && die "git clone failed after $attempt attempts. Check $LOG_FILE for details."
+            warn "Clone attempt $attempt failed — retrying in $((attempt * 10))s..."
+            sleep $((attempt * 10))
+            rm -rf "$INSTALL_DIR"
+            attempt=$((attempt + 1))
+        done
     fi
     SOURCE_DIR="$INSTALL_DIR"
     ok "Source ready at $SOURCE_DIR"
