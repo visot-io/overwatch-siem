@@ -339,22 +339,31 @@ EOF
 # ── start indexer and dashboard ───────────────────────────────────────────────
 start_stack() {
     local compose_dir="$SOURCE_DIR/api/tools/env"
-    log "Building Overwatch dashboard image..."
+
+    # Ensure the dashboard cert export directory exists before mounting
+    mkdir -p "$compose_dir/config/wazuh_dashboard_certs"
+
+    log "Building Docker images (certs-generator + dashboard)..."
     docker compose -f "$compose_dir/docker-compose.yml" \
-        build --no-cache wazuh.dashboard >> "$LOG_FILE" 2>&1
-    ok "Dashboard image built."
+        build certs.generator wazuh.dashboard >> "$LOG_FILE" 2>&1
+    ok "Images built."
+
+    log "Generating TLS certificates (indexer + dashboard)..."
+    docker compose -f "$compose_dir/docker-compose.yml" \
+        run --rm certs.generator >> "$LOG_FILE" 2>&1
+    ok "TLS certificates generated."
 
     log "Starting Wazuh Indexer..."
     docker compose -f "$compose_dir/docker-compose.yml" \
         up -d --no-deps wazuh.indexer >> "$LOG_FILE" 2>&1
 
-    log "Waiting for Indexer to become healthy (up to 3 min)..."
+    log "Waiting for Indexer to become healthy (up to 5 min)..."
     local tries=0
     until docker compose -f "$compose_dir/docker-compose.yml" \
-            ps wazuh.indexer 2>/dev/null | grep -q "healthy" || [ $tries -ge 36 ]; do
+            ps wazuh.indexer 2>/dev/null | grep -q "healthy" || [ $tries -ge 60 ]; do
         sleep 5; tries=$((tries+1))
     done
-    [ $tries -ge 36 ] \
+    [ $tries -ge 60 ] \
         && warn "Indexer health check timed out — starting dashboard anyway." \
         || ok "Indexer is healthy."
 
